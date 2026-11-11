@@ -1,0 +1,155 @@
+{
+  "device": {
+    "t_amb": 25.0,
+    "p_idle": 4.0,
+    "p_static": 3.0,
+    "p_dyn": 27.0,
+    "c_j": 4.0,
+    "r_jc": 0.7,
+    "c_hs": 25.0,
+    "r_ha": 2.4,
+    "t_limit": 85.0,
+    "s_min": 0.3,
+    "k_gov": 0.006
+  },
+  "wax": {
+    "t_melt": 49.0,
+    "melt_sigma": 3.0,
+    "latent": 110000.0,
+    "cp_solid": 2000.0,
+    "cp_liquid": 2200.0,
+    "k_solid": 0.17,
+    "k_liquid": 0.15,
+    "rho": 900.0
+  },
+  "jobs": [
+    {
+      "name": "Job 1",
+      "arrival": 60.0,
+      "work": 90.0,
+      "kind": "burst"
+    },
+    {
+      "name": "Job 2",
+      "arrival": 480.0,
+      "work": 90.0,
+      "kind": "burst"
+    },
+    {
+      "name": "Job 3",
+      "arrival": 900.0,
+      "work": 90.0,
+      "kind": "burst"
+    },
+    {
+      "name": "Sustained job",
+      "arrival": 1320.0,
+      "work": 480.0,
+      "kind": "sustained"
+    }
+  ],
+  "design_checks": [
+    "Melting window : wax melts at 43-55 C; heatsink idles at 34.6 C and the chip throttles once the heatsink passes 64.0 C at full power -> OK",
+    "Latent capacity: 2200 J stored vs ~1800 J of heat the fan cannot remove during a 90 s burst -> OK",
+    "Refreeze       : at the melt point the fan removes 10.0 W, 6.0 W above idle power -> needs ~5.0 min idle after each burst to re-solidify",
+    "Pure-wax reach : 90 s at 10 K above the melt point melts only ~1.7 mm of pure wax -> keep every bit of wax within ~2 mm of metal"
+  ],
+  "results": [
+    {
+      "key": "stock",
+      "build": "Stock heatsink",
+      "peak_tj_bursts_C": 86.65058942595576,
+      "rise_per_burst_K": 48.995705453856395,
+      "throttled_bursts_s": 131.0,
+      "burst_job_times_s": [
+        95.00000000000003,
+        95.10000000000002,
+        95.10000000000002
+      ],
+      "burst_job_time_s": 95.06666666666668,
+      "burst_job_work_s": 90.0,
+      "sustained_full_speed_s": 51.5,
+      "sustained_job_time_s": 556.0,
+      "sustained_throttled_s": 504.5,
+      "peak_tj_sustained_C": 86.65058795690855
+    },
+    {
+      "key": "wax",
+      "build": "+20 g soy wax",
+      "peak_tj_bursts_C": 85.89506141624662,
+      "rise_per_burst_K": 46.68128829544346,
+      "throttled_bursts_s": 47.0,
+      "burst_job_times_s": [
+        90.35000000000002,
+        90.75,
+        90.89999999999998
+      ],
+      "burst_job_time_s": 90.66666666666667,
+      "burst_job_work_s": 90.0,
+      "sustained_full_speed_s": 71.0,
+      "sustained_job_time_s": 532.95,
+      "sustained_throttled_s": 462.0,
+      "peak_tj_sustained_C": 85.90092194595209,
+      "peak_melt_pct": 66.08635400677187,
+      "melt_left_at_next_job_pct": [
+        0.4764627478863307,
+        2.977221063198819,
+        5.652302868377687
+      ],
+      "pack": {
+        "thickness_mm": 8.888888888888888,
+        "layer_mm": 0.7407407407407406,
+        "metal_g": 0.0,
+        "latent_J": 2200.0
+      }
+    },
+    {
+      "key": "foam",
+      "build": "+20 g soy wax in aluminum foam",
+      "peak_tj_bursts_C": 77.7574832298626,
+      "rise_per_burst_K": 34.66765901538014,
+      "throttled_bursts_s": 0.0,
+      "burst_job_times_s": [
+        90.05000000000001,
+        90.04999999999995,
+        90.04999999999995
+      ],
+      "burst_job_time_s": 90.04999999999997,
+      "burst_job_work_s": 90.0,
+      "sustained_full_speed_s": 196.0,
+      "sustained_job_time_s": 518.5,
+      "sustained_throttled_s": 322.5,
+      "peak_tj_sustained_C": 85.26822104431822,
+      "peak_melt_pct": 99.99999999999561,
+      "melt_left_at_next_job_pct": [
+        0.8488002684320376,
+        4.945489404337996,
+        8.385349900850581
+      ],
+      "pack": {
+        "thickness_mm": 9.661835748792269,
+        "layer_mm": 0.8051529790660223,
+        "metal_g": 5.217391304347823,
+        "latent_J": 2200.0
+      }
+    },
+    {
+      "key": "alu",
+      "build": "+20 g aluminum (control)",
+      "peak_tj_bursts_C": 86.0479832806961,
+      "rise_per_burst_K": 47.357890138205725,
+      "throttled_bursts_s": 39.5,
+      "burst_job_times_s": [
+        90.4,
+        90.64999999999998,
+        90.64999999999998
+      ],
+      "burst_job_time_s": 90.56666666666665,
+      "burst_job_work_s": 90.0,
+      "sustained_full_speed_s": 76.5,
+      "sustained_job_time_s": 549.6500000000001,
+      "sustained_throttled_s": 473.5,
+      "peak_tj_sustained_C": 86.04761511838159
+    }
+  ]
+}

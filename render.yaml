@@ -1,0 +1,10 @@
+services:
+  - type: web
+    runtime: static
+    name: soywax-thermal-buffer
+    buildCommand: echo "Static site, no build step"
+    staticPublishPath: ./site
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=86400
