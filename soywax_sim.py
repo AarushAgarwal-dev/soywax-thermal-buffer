@@ -394,6 +394,71 @@ def plot_summary(results: list[Result], device: Device, path: Path) -> None:
     plt.close(fig)
 
 
+def plot_advantages(results: list[Result], device: Device, path: Path) -> None:
+    """Three panels: the first AI job, time throttled in the short jobs, time at full speed in the long job."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    bg, panel, grid, text, muted, red = "#0d1117", "#161b22", "#30363d", "#e6edf3", "#8b949e", "#ff6b6b"
+    colors = {"stock": "#c9d1d9", "wax": "#f0a63a", "foam": "#2dd4bf"}
+    R = {r.build.key: r for r in results}
+    S = {k: summarize(R[k]) for k in colors}
+    job = R["stock"].jobs[0]
+
+    fig = plt.figure(figsize=(15, 5.4), dpi=120, facecolor=bg)
+    gs = fig.add_gridspec(1, 3, width_ratios=[1.9, 1, 1], wspace=0.22, left=0.055, right=0.985, top=0.80, bottom=0.15)
+    ax1, ax2, ax3 = (fig.add_subplot(g) for g in gs)
+    for ax in (ax1, ax2, ax3):
+        ax.set_facecolor(panel)
+        for s in ax.spines.values():
+            s.set_color(grid)
+        ax.tick_params(colors=muted, labelsize=11)
+
+    for k, c in colors.items():
+        r = R[k]
+        m = (r.t >= job.arrival - 10) & (r.t <= job.arrival + job.work + 25)
+        ax1.plot(r.t[m] - job.arrival, r.t_j[m], color=c, lw=2.8, label=r.build.label)
+    ax1.axhline(device.t_limit, color=red, ls="--", lw=1.3)
+    ax1.text(job.work + 24, device.t_limit + 1.3, f"throttle limit {device.t_limit:.0f} °C", color=red, ha="right", fontsize=10)
+    ax1.axvspan(0, job.work, color="white", alpha=0.05, lw=0)
+    ax1.text(job.work / 2, 90.6, "AI job running", color=muted, ha="center", va="center", fontsize=10)
+    ax1.set_ylim(34, 93)
+    ax1.set_xlim(-10, job.work + 25)
+    ax1.set_xlabel("Seconds since the job started", color=text, fontsize=12)
+    ax1.set_ylabel("Chip temperature (°C)", color=text, fontsize=12)
+    ax1.grid(color=grid, alpha=0.6)
+    ax1.legend(loc="lower right", fontsize=10.5, frameon=False, labelcolor=text)
+    ax1.set_title(f"Chip temperature during the first {job.work:.0f}-second AI job", color=text, fontsize=13, loc="left")
+
+    keys = list(colors)
+    names = ["Stock\nheatsink", "+ soy wax", "+ soy wax in\naluminum foam"]
+    nb = sum(1 for j in R["stock"].jobs if j.kind == "burst")
+    long_min = next((j.work / 60 for j in R["stock"].jobs if j.kind == "sustained"), 0.0)
+    art = "an" if str(int(round(long_min))).startswith("8") else "a"
+    panels = ((ax2, [S[k]["throttled_bursts_s"] for k in keys], lambda v: f"{v:.0f} s",
+               f"Time throttled in\n{nb} short jobs (lower is better)"),
+              (ax3, [S[k]["sustained_full_speed_s"] for k in keys], mmss,
+               f"Time at full speed in\n{art} {long_min:.0f}-minute job (higher is better)"))
+    for ax, vals, fmt, title in panels:
+        bars = ax.bar(range(3), vals, color=[colors[k] for k in keys], width=0.62)
+        top = max(vals) or 1.0
+        for b, v in zip(bars, vals):
+            ax.text(b.get_x() + b.get_width() / 2, v + top * 0.02, fmt(v), ha="center", va="bottom",
+                    color=text, fontsize=14, fontweight="bold")
+        ax.set_xticks(range(3))
+        ax.set_xticklabels(names, color=text, fontsize=10)
+        ax.set_yticks([])
+        ax.set_ylim(0, top * 1.2)
+        for side in ("top", "right", "left"):
+            ax.spines[side].set_visible(False)
+        ax.set_title(title, color=text, fontsize=12, loc="left")
+    fig.suptitle("Same chip, same fan, same workload: only the buffer on the heatsink changes (simulation)",
+                 color=muted, fontsize=12, x=0.055, ha="left", y=0.97)
+    fig.savefig(path, facecolor=bg)
+    plt.close(fig)
+
+
 def build_scenario(args: argparse.Namespace) -> tuple[Device, WaxProps, list[Build], list[Job]]:
     device = replace(Device(), t_amb=args.t_amb, p_idle=args.p_idle,
                      p_dyn=args.p_full - Device().p_static, r_ha=args.r_ha, c_hs=args.c_hs)
@@ -406,7 +471,7 @@ def add_scenario_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--wax-g", type=float, default=20.0, help="grams of soy wax in the pack (default 20)")
     ap.add_argument("--latent", type=float, default=w.latent / 1e3, help="latent heat, J/g (default 110)")
     ap.add_argument("--t-melt", type=float, default=w.t_melt, help="melting-range centre, C (default 49)")
-    ap.add_argument("--k-foam", type=float, default=3.0, help="wax+Al foam conductivity, W/mK (default 3)")
+    ap.add_argument("--k-foam", type=float, default=3.0, help="wax + aluminum foam conductivity, W/mK (default 3)")
     ap.add_argument("--t-amb", type=float, default=d.t_amb, help="air temperature, C (default 25)")
     ap.add_argument("--p-full", type=float, default=d.p_full, help="full-speed chip power, W (default 30)")
     ap.add_argument("--p-idle", type=float, default=d.p_idle, help="idle chip power, W (default 4)")
@@ -443,7 +508,8 @@ def main(argv: list[str] | None = None) -> None:
                    design_checks=checks, results=summaries)
     (out / "results.json").write_text(json.dumps(payload, indent=2))
     plot_summary(results, device, out / "summary.png")
-    print(f"\nWrote {out / 'results.json'} and {out / 'summary.png'}")
+    plot_advantages(results, device, out / "advantages.png")
+    print(f"\nWrote {out / 'results.json'}, {out / 'summary.png'} and {out / 'advantages.png'}")
 
 
 if __name__ == "__main__":

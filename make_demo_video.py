@@ -80,6 +80,7 @@ class Frame(NamedTuple):
     cue: int = -1              # caption index, -1 = none
     cue_age: int = 0           # frames since the caption appeared
     intro_t: float = 0.0       # s since the intro card appeared
+    prog: float = 0.0          # progress bar, 0..1
 
 
 @dataclass(frozen=True)
@@ -130,6 +131,11 @@ def say_seconds(s: float) -> str:
         return f"{s} seconds"
     m, r = divmod(s, 60)
     return f"{m} minutes" if r == 0 else f"{m} minutes and {r} seconds"
+
+
+def short_dur(s: float) -> str:
+    s = int(round(s))
+    return f"{s} s" if s < 120 else f"{s // 60} min {s % 60} s"
 
 
 def wrap2(text: str, width: int = 96) -> str:
@@ -209,6 +215,15 @@ class Demo:
         self.thr_cum = {r.build.key: np.cumsum(sim.throttled_mask(r)) * self.dt_rec for r in results}
         self.bursts = [j for j in jobs if j.kind == "burst"]
         self.sustained = next((j for j in jobs if j.kind == "sustained"), None)
+        self.windows = self._windows()
+        self.t_run = self.t_end                # end of the simulated run
+        self.t_end = self.windows[-1][1]       # end of what the video shows
+        t_all = self.shown[0].t
+        view = np.zeros(len(t_all), dtype=bool)
+        for a, b in self.windows:
+            view |= (t_all >= a) & (t_all <= b)
+        self.series = {r.build.key: dict(p=np.where(view, r.power, np.nan), t=np.where(view, r.t_j, np.nan),
+                                         m=np.where(view, 100 * r.melt, np.nan)) for r in self.shown}
         self.cues = self._cues()
         self.cue_text = [wrap2(c.text) for c in self.cues]
         self.intro_say, self.intro_keys = self._intro_script()
@@ -224,118 +239,97 @@ class Demo:
         self.outro = self._outro()
 
     # ------------------------------------------------------------------ script
+    def _windows(self) -> list[tuple[float, float]]:
+        """Stretches of device time shown in the video. Idle gaps between jobs are skipped, and the
+        long job is shown up to the moment the best build is still holding full speed."""
+        t = self.shown[0].t
+        wins = []
+        for n, j in enumerate(self.jobs):
+            ends = [r.job_end[n] for r in self.shown if math.isfinite(r.job_end[n])]
+            a, b = j.arrival - 12.0, (max(ends) if ends else j.arrival + j.work) + 25.0
+            if j.kind == "sustained":
+                tf = first_time(sim.throttled_mask(self.R["foam"]), t, j.arrival, t[-1])
+                if tf is not None:
+                    b = min(b, tf - 1.0)
+            wins.append((max(0.0, a), b))
+        wins[0] = (0.0, wins[0][1])
+        merged: list[tuple[float, float]] = []
+        for a, b in wins:
+            if merged and a <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(b, merged[-1][1]))
+            else:
+                merged.append((a, b))
+        return merged
+
     def _cues(self) -> list[Cue]:
         R, S, d, w = self.R, self.S, self.device, self.wax
-        stock, pure, foam = R["stock"], R["wax"], R["foam"]
-        t = stock.t
+        stock, foam = R["stock"], R["foam"]
+        t, t_run = stock.t, stock.t[-1]
         t_idle = stock.t_j[0]
         cues = [Cue(0.0,
-                    f"Each card on the left is one build. At idle ({d.p_idle:.0f} W) all three sit near "
-                    f"{t_idle:.0f} °C and the wax is solid.",
-                    f"Each card on the left is one build. At idle, all three sit near {t_idle:.0f} degrees "
-                    "Celsius, and the wax is solid.")]
+                    f"Each card is one build. All three start at {t_idle:.0f} °C with the wax solid.",
+                    f"Each card is one build. All three start at the same {t_idle:.0f} degrees Celsius, "
+                    "with the wax solid.")]
+        spoken = lambda v: "none" if round(v) == 0 else f"{v:.0f} seconds"  # noqa: E731
         if self.bursts:
             j1 = self.bursts[0]
             i1 = self.jobs.index(j1)
+            span = j1.arrival + 3 * j1.work
             cues.append(Cue(j1.arrival - 4,
-                            f"{j1.name} arrives: the AI chip jumps from {d.p_idle:.0f} W to {d.p_full:.0f} W.",
-                            f"Job one arrives, and the chip jumps from {d.p_idle:.0f} to {d.p_full:.0f} watts."))
-            t_thr = first_time(sim.throttled_mask(stock), t, j1.arrival, j1.arrival + 3 * j1.work)
+                            f"{j1.name} starts: the AI chip jumps from {d.p_idle:.0f} W to {d.p_full:.0f} W.",
+                            f"Job one starts, and the chip jumps from {d.p_idle:.0f} to {d.p_full:.0f} watts."))
+            t_melt = first_time(foam.melt > 0.05, t, j1.arrival, span)
+            if t_melt is not None:
+                cues.append(Cue(t_melt,
+                                f"The wax starts melting near {w.t_melt:.0f} °C and soaks up heat.\n"
+                                "In aluminum foam, the chip warms much more slowly.",
+                                f"The wax starts melting near {w.t_melt:.0f} degrees, and soaks up heat. "
+                                "In aluminum foam, the chip warms much more slowly."))
+            t_thr = first_time(sim.throttled_mask(stock), t, j1.arrival, span)
             if t_thr is not None:
+                pk = math.ceil(window_max(foam.t_j, t, j1.arrival, foam.job_end[i1]))
                 cues.append(Cue(t_thr,
-                                f"The stock heatsink hits the {d.t_limit:.0f} °C limit, so the chip throttles: "
-                                "it cuts its clock speed.",
-                                f"The stock heatsink hits the {d.t_limit:.0f} degree limit, so the chip "
-                                "throttles, cutting its clock speed."))
-            pk = math.ceil(window_max(foam.t_j, t, j1.arrival, foam.job_end[i1]))
-            cues.append(Cue((t_thr if t_thr is not None else j1.arrival + 30) + 26,
-                            f"Both wax packs melt near {w.t_melt:.0f} °C and soak up heat.\n"
-                            f"In aluminum foam, the wax holds the chip at or below {pk} °C.",
-                            f"Both wax packs are now melting near {w.t_melt:.0f} degrees, soaking up heat. "
-                            f"In aluminum foam, the wax holds the chip at or below {pk} degrees."))
-            later = [j.arrival for j in self.jobs[i1 + 1:]]
-            if later:
-                base = np.interp(later, t, stock.t_j)
-                diffs = np.concatenate([np.interp(later, t, R[k].t_j) - base for k in ("wax", "foam")])
-                lo, hi = max(0, int(round(diffs.min()))), int(round(diffs.max()))
-                cues.append(Cue(max(r.job_end[i1] for r in self.shown) + 35,
-                                "Between jobs the wax re-solidifies and hands its heat to the fan,\n"
-                                f"so the wax builds start each new job {lo}–{hi} °C warmer.",
-                                "Between jobs, the wax re-solidifies and hands its heat to the fan, so the "
-                                f"wax builds start each new job {lo} to {hi} degrees warmer."))
-        if len(self.bursts) > 1:
-            j2 = self.bursts[1]
-            frac = window_max(pure.melt, t, j2.arrival, j2.arrival + j2.work + 60)
-            thick = pure.pack["thickness_mm"]
-            depth = frac * thick
-            cues.append(Cue(j2.arrival - 4,
-                            f"{j2.name}: the plain wax pack helps much less. Wax conducts heat poorly "
-                            f"(~{w.k_solid:.2f} W/m·K),\nso only the first {depth:.1f} mm of its {thick:.0f} mm "
-                            "slab melts.",
-                            "Job two. The plain wax pack helps much less. Wax conducts heat poorly, so only the "
-                            f"first {depth:.1f} millimeters of its {thick:.0f} millimeter slab melts."))
-        if len(self.bursts) > 2:
-            j3 = self.bursts[2]
-            nb = len(self.bursts)
-            per_job = S["stock"]["throttled_bursts_s"] / nb
-            if S["foam"]["throttled_bursts_s"] == 0:
-                text = (f"{j3.name}: across all {nb} short jobs the foam build never throttles.\n"
-                        f"The stock heatsink throttles for about {per_job:.0f} s of every {j3.work:.0f} s job.")
-                say = (f"Job three. Across all {NUM_WORDS.get(nb, nb)} short jobs, the foam build never "
-                       f"throttles, while the stock heatsink throttles for about {per_job:.0f} seconds of "
-                       f"every {j3.work:.0f}.")
-            else:
-                text = (f"{j3.name}: the foam build throttled {S['foam']['throttled_bursts_s']:.0f} s in total, "
-                        f"the stock heatsink {S['stock']['throttled_bursts_s']:.0f} s.")
-                say = (f"Job three. In total, the foam build throttled for "
-                       f"{S['foam']['throttled_bursts_s']:.0f} seconds, the stock heatsink for "
-                       f"{S['stock']['throttled_bursts_s']:.0f}.")
-            cues.append(Cue(j3.arrival - 4, text, say))
+                                f"The stock heatsink reaches the {d.t_limit:.0f} °C limit, so its chip has to slow down.",
+                                f"The stock heatsink reaches the {d.t_limit:.0f} degree limit, so its chip has to slow down."))
+                cues.append(Cue(t_thr + 20,
+                                f"With wax in aluminum foam, the chip stays at or below {pk} °C and at full speed.",
+                                f"With wax in aluminum foam, the chip stays at or below {pk} degrees, and at full speed."))
+            if len(self.bursts) > 1:
+                j2 = self.bursts[1]
+                i2 = self.jobs.index(j2)
+                pk2 = math.ceil(window_max(foam.t_j, t, j2.arrival, foam.job_end[i2]))
+                cues.append(Cue(j2.arrival - 12,
+                                f"{j2.name}: wax in aluminum foam holds full speed again, peaking at {pk2} °C.",
+                                f"Job two. Wax in aluminum foam holds full speed again, peaking at {pk2} degrees."))
+            if len(self.bursts) > 2:
+                j3 = self.bursts[2]
+                nb = len(self.bursts)
+                a_, b_, c_ = (S[k]["throttled_bursts_s"] for k in ("stock", "wax", "foam"))
+                cues.append(Cue(j3.arrival + 50,
+                                f"Over the {nb} short jobs the stock heatsink throttled {a_:.0f} s, "
+                                f"the simple wax pack {b_:.0f} s, wax in aluminum foam {c_:.0f} s.",
+                                f"Over the {NUM_WORDS.get(nb, nb)} short jobs, the stock heatsink spent {a_:.0f} seconds "
+                                f"throttled. The simple wax pack, {spoken(b_)}. The foam build, {spoken(c_)}."))
         js = self.sustained
         if js is not None:
-            i = self.jobs.index(js)
             m = round(js.work / 60)
-            cues.append(Cue(js.arrival - 4, f"Now {article(m)} {m}-minute job at full load.",
+            cues.append(Cue(js.arrival - 10, f"Now {article(m)} {m}-minute job at full load.",
                             f"Now, {article(m)} {m} minute job at full load."))
-            ts = first_time(sim.throttled_mask(stock), t, js.arrival, self.t_end)
+            ts = first_time(sim.throttled_mask(stock), t, js.arrival, t_run)
+            tf = first_time(sim.throttled_mask(foam), t, js.arrival, t_run)
+            ss, sb, sf = (S[k]["sustained_full_speed_s"] for k in ("stock", "wax", "foam"))
             if ts is not None:
-                ss, sb = S["stock"]["sustained_full_speed_s"], S["wax"]["sustained_full_speed_s"]
                 cues.append(Cue(ts,
-                                f"The stock heatsink throttles after {sim.mmss(ss)} at full speed, "
-                                f"the plain wax build after {sim.mmss(sb)}.",
-                                f"The stock heatsink throttles after {say_seconds(ss)}, and the plain wax "
-                                f"build after {say_seconds(sb)}."))
-            tf = first_time(sim.throttled_mask(foam), t, js.arrival, self.t_end)
-            if tf is not None:
-                sf = S["foam"]["sustained_full_speed_s"]
-                mf = float(np.interp(tf, t, foam.melt))
-                if mf >= 0.97:
-                    state = state_say = "fully melted"
-                elif mf >= 0.85:
-                    state = state_say = "almost fully melted"
-                else:
-                    state, state_say = f"{100 * mf:.0f} % melted", f"{100 * mf:.0f} percent melted"
-                cues.append(Cue(tf,
-                                f"After {sim.mmss(sf)} the foam pack is {state}. The buffer is spent, "
-                                "so this build throttles too.",
-                                f"After {say_seconds(sf)}, the foam pack is {state_say}. The buffer is spent, "
-                                "so this build throttles too."))
-                late = (t > (ts if ts is not None else js.arrival) + 120) & (t < stock.job_end[i] - 5)
-                p_sus = float(np.median(stock.power[late])) if late.any() else d.p_full
-                cues.append(Cue(tf + 90,
-                                f"It settles to the same ~{p_sus:.0f} W as the stock heatsink:\n"
-                                "wax buys time but adds no sustained cooling capacity.",
-                                f"From here, it settles to the same {p_sus:.0f} watts as the stock heatsink. "
-                                "Wax buys time, but adds no sustained cooling."))
-            end = max(r.job_end[i] for r in self.shown if math.isfinite(r.job_end[i]))
-            mins = (self.t_end - foam.job_end[i]) / 60
-            if math.isfinite(mins) and mins > 1:
-                pct = 100 * foam.melt[-1]
-                cues.append(Cue(end + 20,
-                                f"Re-solidifying after a long job is slow: {mins:.0f} minutes after it ends, "
-                                f"the foam pack is still {pct:.0f} % molten.",
-                                f"Re-solidifying after a long job is slow. {mins:.0f} minutes later, the foam "
-                                f"pack is still {pct:.0f} percent molten."))
+                                f"The stock heatsink holds full speed for just {short_dur(ss)}.\n"
+                                f"The simple wax pack holds it for {short_dur(sb)}.",
+                                f"The stock heatsink holds full speed for just {say_seconds(ss)}. "
+                                f"The simple wax pack holds it for {say_seconds(sb)}."))
+            if tf is not None and ss > 0:
+                cues.append(Cue(max(tf - 100, (ts or js.arrival) + 15),
+                                f"Wax in aluminum foam holds full speed for {short_dur(sf)}: "
+                                f"{sf / ss:.1f}× longer than the stock heatsink.",
+                                f"Wax in aluminum foam holds full speed for {say_seconds(sf)}, "
+                                f"{sf / ss:.1f} times longer than the stock heatsink."))
         cues = sorted((c for c in cues if c.t < self.t_end - 5), key=lambda c: c.t)
         fixed = [cues[0]]
         for c in cues[1:]:  # keep cue times strictly increasing
@@ -356,26 +350,22 @@ class Demo:
 
     def _outro_script(self) -> str:
         S = self.S
-        st, wx, fm, al = (S[k] for k in ("stock", "wax", "foam", "alu"))
-        nb = len(self.bursts)
-        s = (f"The scorecard. Over the {NUM_WORDS.get(nb, nb)} short jobs, the stock heatsink throttled for "
-             f"{st['throttled_bursts_s']:.0f} seconds. ")
-        if wx["throttled_bursts_s"] >= al["throttled_bursts_s"]:
-            cmp = "no better than"
-        elif wx["throttled_bursts_s"] >= 0.75 * al["throttled_bursts_s"]:
-            cmp = "about the same as"
+        st, wx, fm = (S[k] for k in ("stock", "wax", "foam"))
+        wax_g = self.R["wax"].build.wax_mass * 1e3
+        drop = st["peak_tj_bursts_C"] - fm["peak_tj_bursts_C"]
+        s = (f"The scorecard. With {wax_g:.0f} grams of soy wax cast into aluminum foam, the chip peaked "
+             f"{drop:.0f} degrees cooler in the short jobs. ")
+        if fm["throttled_bursts_s"] < 0.5:
+            s += f"In those jobs it never throttled, against {st['throttled_bursts_s']:.0f} seconds for the stock heatsink, "
         else:
-            cmp = "better than"
-        s += f"Plain wax cut that to {wx['throttled_bursts_s']:.0f}, {cmp} the same weight of plain aluminum. "
-        if fm["throttled_bursts_s"] == 0:
-            s += ("The foam build never throttled, and peaked "
-                  f"{st['peak_tj_bursts_C'] - fm['peak_tj_bursts_C']:.0f} degrees cooler. ")
-        else:
-            s += f"The foam build throttled for just {fm['throttled_bursts_s']:.0f}. "
-        reach = max(1, round(sim.melt_reach_mm(self.wax, self.bursts[0].work))) if self.bursts else 2
-        s += ("So: match the melting point to your hardware, keep all the wax within about "
-              f"{reach} millimeters of metal, and expect it to buy minutes, not extra cooling. "
-              "The next step is a bench test.")
+            s += (f"In those jobs it throttled for just {fm['throttled_bursts_s']:.0f} seconds, against "
+                  f"{st['throttled_bursts_s']:.0f} for the stock heatsink, ")
+        s += (f"and it held full speed {fm['sustained_full_speed_s'] / st['sustained_full_speed_s']:.1f} "
+              "times longer in the long job. ")
+        if st["throttled_bursts_s"] > 0:
+            cut = 100 * (1 - wx["throttled_bursts_s"] / st["throttled_bursts_s"])
+            s += f"Even the simple wax pack cut throttling by {cut:.0f} percent. "
+        s += "It is passive, with nothing to power or control. These are simulation results, so the next step is a bench test."
         return s
 
     def narration(self) -> dict[str, str]:
@@ -460,8 +450,11 @@ class Demo:
                 ax.axvspan(j.arrival / 60, (j.arrival + j.work) / 60, color="white", alpha=0.045, lw=0)
         for j in self.jobs:
             name = j.name if j.kind == "burst" else f"{j.work / 60:.0f}-min job"
-            self.ax_p.text((j.arrival + j.work / 2) / 60, d.p_full * 1.13, name, ha="center", va="center",
+            self.ax_p.text((j.arrival + min(j.arrival + j.work, self.t_end)) / 120, d.p_full * 1.13, name, ha="center", va="center",
                            fontsize=12, color=MUTED)
+        for (_, b0), (a1, _) in zip(self.windows[:-1], self.windows[1:]):
+            self.ax_p.text((b0 + a1) / 120, d.p_full * 0.5, "idle time\nskipped", ha="center", va="center",
+                           fontsize=11, color=MUTED, linespacing=1.2)
         self.ax_p.set_ylim(0, d.p_full * 1.25)
         self.ax_p.set_ylabel("Chip power (W)", color=TEXT, fontsize=14)
         self.ax_t.set_ylim(30, 95)
@@ -538,7 +531,7 @@ class Demo:
         if self.sustained:
             m = round(self.sustained.work / 60)
             wl += f", then {article(m)} {m}-minute job"
-        wl += f"  ·  {self.t_end / 60:.0f} minutes of device time, sped up"
+        wl += "  ·  idle gaps between jobs skipped"
         add(5, ax.text(0.07, 0.17, wl, fontsize=19, color=MUTED, va="center"))
         add(1, ax.text(0.07, 0.085, "Physics model, not a lab measurement. Assumptions and sources are in README.md.",
                        fontsize=15, color=MUTED, va="center", style="italic"))
@@ -563,52 +556,61 @@ class Demo:
             ov["base"].append((artist, 1.0))
             return artist
 
-        S, d, w = self.S, self.device, self.wax
-        add(ax.text(0.06, 0.905, "What the simulation shows", fontsize=36, fontweight="bold", color=TEXT, va="center"))
-        add(ax.text(0.06, 0.855, "Same chip, fan and workload. Only the buffer changes. "
-                                 "D is a control: the same mass of plain aluminum.", fontsize=17, color=MUTED, va="center"))
+        S = self.S
+        st, wx, fm = S["stock"], S["wax"], S["foam"]
+        nb = len(self.bursts)
         long_job = f"{round(self.sustained.work / 60)}-min job" if self.sustained else "long job"
-        cols = [(0.06, "Build", "left"), (0.47, "Peak junction\n(3 short jobs)", "center"),
-                (0.60, "Rise per job", "center"), (0.72, "Throttled\n(3 short jobs)", "center"),
-                (0.86, f"Full speed in\n{long_job}", "center")]
+        add(ax.text(0.06, 0.905, "What the simulation shows", fontsize=36, fontweight="bold", color=TEXT, va="center"))
+        add(ax.text(0.06, 0.855, "Same chip, fan and workload. Only the buffer on the heatsink changes.",
+                    fontsize=17, color=MUTED, va="center"))
+        cols = [(0.06, "Build", "left"), (0.52, f"Throttled\n({nb} short jobs)", "center"),
+                (0.68, f"Full speed in\n{long_job}", "center"), (0.85, f"Time to finish\n{long_job}", "center")]
         for x, name, ha in cols:
             add(ax.text(x, 0.775, name, fontsize=15, color=MUTED, ha=ha, va="center", linespacing=1.2))
-        add(ax.add_patch(Rectangle((0.05, 0.709), 0.90, 0.002, fc=GRID, ec="none")))
-        for k, key in enumerate(("stock", "wax", "foam", "alu")):
+        add(ax.add_patch(Rectangle((0.05, 0.725), 0.90, 0.002, fc=GRID, ec="none")))
+        for k, key in enumerate(("stock", "wax", "foam")):
             s = S[key]
-            yy = 0.672 - k * 0.058
+            yy = 0.685 - k * 0.058
             if key == "foam":
                 add(ax.add_patch(Rectangle((0.05, yy - 0.026), 0.90, 0.052, fc=PANEL, ec=COLORS["foam"], lw=1.2)))
-            vals = [f"{s['peak_tj_bursts_C']:.1f} °C", f"{s['rise_per_burst_K']:.0f} K",
-                    f"{s['throttled_bursts_s']:.0f} s", sim.mmss(s.get("sustained_full_speed_s", math.nan))]
+            vals = [f"{s['throttled_bursts_s']:.0f} s", sim.mmss(s.get("sustained_full_speed_s", math.nan)),
+                    sim.mmss(s.get("sustained_job_time_s", math.nan))]
             add(ax.text(0.06, yy, f"{LETTERS[key]}   {s['build']}", fontsize=20, color=COLORS[key],
                         fontweight="bold", va="center"))
             for (x, _, ha), v in zip(cols[1:], vals):
                 add(ax.text(x, yy, v, fontsize=20, color=TEXT, ha=ha, va="center"))
-        foam, stock = S["foam"], S["stock"]
-        lo, hi = w.t_melt - 2 * w.melt_sigma, w.t_melt + 2 * w.melt_sigma
-        hs_idle = d.t_amb + d.p_idle * d.r_ha
-        hs_thr = d.t_limit - d.p_full * d.r_jc
-        thick = self.R["wax"].pack["thickness_mm"]
-        fr = self.R["foam"]
-        i1 = self.jobs.index(self.bursts[0])
-        t_solid = first_time(fr.melt < 0.03, fr.t, fr.job_end[i1], self.t_end)
-        refreeze = (t_solid - fr.job_end[i1]) / 60 if t_solid is not None else math.nan
+        drop = st["peak_tj_bursts_C"] - fm["peak_tj_bursts_C"]
+        ratio = fm["sustained_full_speed_s"] / st["sustained_full_speed_s"]
+        tiles = [
+            (f"{drop:.0f} °C", "lower peak temperature",
+             f"{fm['peak_tj_bursts_C']:.0f} vs {st['peak_tj_bursts_C']:.0f} °C in the short jobs"),
+            (f"{fm['throttled_bursts_s']:.0f} s", "throttled in the short jobs",
+             f"stock heatsink: {st['throttled_bursts_s']:.0f} s"),
+            (f"{ratio:.1f}×", "longer at full speed",
+             f"{sim.mmss(fm['sustained_full_speed_s'])} vs {sim.mmss(st['sustained_full_speed_s'])} in the {long_job}"),
+        ]
+        for k, (big, line1, line2) in enumerate(tiles):
+            x0 = 0.06 + k * 0.30
+            add(ax.add_patch(Rectangle((x0, 0.31), 0.27, 0.19, fc=PANEL, ec=COLORS["foam"], lw=1.2)))
+            add(ax.text(x0 + 0.135, 0.445, big, fontsize=44, fontweight="bold", color=COLORS["foam"],
+                        ha="center", va="center"))
+            add(ax.text(x0 + 0.135, 0.375, line1, fontsize=17, color=TEXT, ha="center", va="center"))
+            add(ax.text(x0 + 0.135, 0.335, line2, fontsize=13, color=MUTED, ha="center", va="center"))
+        cut = 100 * (1 - wx["throttled_bursts_s"] / st["throttled_bursts_s"]) if st["throttled_bursts_s"] else 0.0
+        sooner = st["sustained_job_time_s"] - fm["sustained_job_time_s"]
+        wax_g = self.R["wax"].build.wax_mass * 1e3
+        metal_g = self.R["foam"].pack["metal_g"]
         bullets = [
-            f"Match the melting point to the hardware. This wax melts at {lo:.0f}–{hi:.0f} °C, between the "
-            f"{hs_idle:.0f} °C idle heatsink and the {hs_thr:.0f} °C where throttling starts.",
-            f"Pure wax conducts heat poorly (~{w.k_solid:.2f} W/m·K). The {thick:.0f} mm slab did about as well as "
-            "plain aluminum. Wax in metal foam or between fins makes it work.",
-            f"It buys time, not capacity: {sim.mmss(foam['sustained_full_speed_s'])} at full speed instead of "
-            f"{sim.mmss(stock['sustained_full_speed_s'])}, then every build throttles to the same power.",
-            f"It has to re-solidify: about {refreeze:.0f} min of idle after each job, with the chip idling a few "
-            "degrees warmer meanwhile.",
+            f"The simple wax pack alone cuts throttling by {cut:.0f} % ({st['throttled_bursts_s']:.0f} s to "
+            f"{wx['throttled_bursts_s']:.0f} s).",
+            f"Jobs finish sooner: the {long_job} completes {sooner:.0f} s earlier with wax in aluminum foam.",
+            f"Passive and plant-based: nothing to power or control, just {wax_g:.0f} g of soy wax and "
+            f"{metal_g:.0f} g of aluminum foam.",
         ]
         for k, b in enumerate(bullets):
-            add(ax.text(0.06, 0.39 - k * 0.062, "•  " + b, fontsize=17, color=TEXT, va="center"))
-        add(ax.text(0.06, 0.07, "Model: lumped chip + heatsink, 1-D enthalpy model of the wax pack, DVFS governor. "
-                                f"Soy wax: {w.latent / 1e3:.0f} J/g, ~{w.k_solid:.2f} W/m·K. Wax in aluminum foam: "
-                                f"{fr.build.k_pack:.0f} W/m·K. Validate on a bench rig before relying on these numbers.",
+            add(ax.text(0.06, 0.225 - k * 0.055, "•  " + b, fontsize=18, color=TEXT, va="center"))
+        add(ax.text(0.06, 0.04, "Results come from a physics simulation (lumped chip and heatsink, 1-D enthalpy model of "
+                                "the wax pack). Next step: a bench test. Assumptions and sources: README.md.",
                     fontsize=13, color=MUTED, va="center", style="italic"))
         return ov
 
@@ -636,11 +638,12 @@ class Demo:
         x = self.minutes[: i + 1]
         for e in self.lines:
             r = e["r"]
-            e["p"].set_data(x, r.power[: i + 1])
-            e["t"].set_data(x, r.t_j[: i + 1])
+            ser = self.series[r.build.key]
+            e["p"].set_data(x, ser["p"][: i + 1])
+            e["t"].set_data(x, ser["t"][: i + 1])
             e["t_dot"].set_data([x[-1]], [r.t_j[i]])
             if e["m"] is not None:
-                e["m"].set_data(x, 100 * r.melt[: i + 1])
+                e["m"].set_data(x, ser["m"][: i + 1])
                 e["m_dot"].set_data([x[-1]], [100 * r.melt[i]])
         for ln in self.now:
             ln.set_xdata([x[-1], x[-1]])
@@ -658,7 +661,7 @@ class Demo:
                 c["melt_bar"].set_width(c["bw"] * r.melt[i])
                 c["melt_txt"].set_text(f"{100 * r.melt[i]:.0f} %")
             c["tj"].set_text(f"{tj:.1f} °C")
-            c["tj"].set_color(RED if tj >= d.t_limit - 0.5 else TEXT)
+            c["tj"].set_color(RED if throttled else TEXT)  # red = the chip is being throttled
             if throttled:
                 state, fc, tc = "THROTTLED", RED, BG
             elif busy:
@@ -681,42 +684,43 @@ class Demo:
             self.caption.set_alpha(1.0 if still else min(1.0, (fr.cue_age + 1) / 8))
         else:
             self.caption.set_text("")
-        self.progress.set_width(min(1.0, t_sim / self.t_end))
+        self.progress.set_width(fr.prog)
 
 
 # ---------------------------------------------------------------------------- timeline
-def speed_target(jobs: list[sim.Job]):
-    """Preferred playback speed (simulated s per video s): slow while jobs run, fast through idle time."""
+def speed_target(demo: Demo):
+    """Preferred playback speed (simulated s per video s): slow while a short job runs, quicker for the long one."""
+    first = demo.jobs[0].arrival if demo.jobs else 0.0
     segs = []
-    first = True
-    for j in jobs:
+    for n, j in enumerate(demo.jobs):
         if j.kind == "burst":
-            segs.append((j.arrival - 15, j.arrival + j.work + (65 if first else 45), 8.0 if first else 18.0))
-            first = False
+            segs.append((j.arrival - 15, j.arrival + j.work + 70, 8.0 if n == 0 else 14.0))
         else:
-            segs.append((j.arrival - 15, j.arrival + 330, 20.0))
-    t_first = min((j.arrival for j in jobs), default=0.0)
+            segs.append((j.arrival - 15, demo.t_end + 1, 24.0))
 
     def target(t: float) -> float:
         for a, b, v in segs:
             if a <= t < b:
                 return v
-        return 20.0 if t < t_first else 60.0
+        return 20.0 if t < first else 14.0
 
     return target
 
 
 def playback(demo: Demo, slow: list[float], fps: int) -> tuple[list[tuple[float, float]], list[int]]:
     """Frames of the simulation playback. Cue k's stretch runs `slow[k]` times slower than preferred.
-    Returns [(sim time, speed)] and the first frame of every cue."""
-    target = speed_target(demo.jobs)
+    Idle gaps between jobs are skipped. Returns [(sim time, speed)] and the first frame of every cue."""
+    target = speed_target(demo)
     starts = [c.t for c in demo.cues]
     ease = 1 - math.exp(-1 / (fps * 0.5))
     out: list[tuple[float, float]] = []
     first = [0] * len(starts)
-    t, k = 0.0, 0
+    t, k, w = 0.0, 0, 0
     v = target(0.0) / slow[0]
     while t < demo.t_end:
+        while w + 1 < len(demo.windows) and t >= demo.windows[w][1]:
+            w += 1
+            t = max(t, demo.windows[w][0])
         while k + 1 < len(starts) and t >= starts[k + 1]:
             k += 1
             first[k] = len(out)
@@ -751,7 +755,7 @@ def build_plan(demo: Demo, fps: int, clips: dict[str, Clip]) -> tuple[list[Frame
     fade = int(round(0.7 * fps))
     intro = clips["intro"]
     demo.intro_reveal = [0.0] + [INTRO_LEAD + m - 0.1 for m in find_marks(intro, demo.intro_keys)]
-    v0 = speed_target(demo.jobs)(0.0)
+    v0 = speed_target(demo)(0.0)
     frames: list[Frame] = []
     sched: list[tuple[float, str]] = [(INTRO_LEAD, "intro")]
     n_hold = int(round(max(5.0, INTRO_LEAD + intro.duration + 1.0) * fps))
@@ -779,6 +783,8 @@ def build_plan(demo: Demo, fps: int, clips: dict[str, Clip]) -> tuple[list[Frame
     sched.append((len(frames) / fps + 0.3, "outro"))
     n_out = int(round(max(10.0, 0.3 + clips["outro"].duration + 2.5) * fps))
     frames += [Frame(demo.t_end, v_end, "outro", 1.0, K - 1, age + n_end + fade)] * n_out
+    n_total = len(frames)
+    frames = [f._replace(prog=n / n_total) for n, f in enumerate(frames)]
     return frames, sched
 
 
@@ -1007,8 +1013,8 @@ def main() -> None:
     if args.stills:
         intro_full = [n for n, f in enumerate(frames) if f.overlay == "intro" and f.alpha == 1.0]
         picks = {"intro_reveal": intro_full[len(intro_full) // 3], "intro": intro_full[-1]}
-        for name, ts in (("job1", 140.0), ("idle", 300.0), ("job2", 560.0), ("job3", 975.0),
-                         ("sustained", 1560.0), ("end", demo.t_end)):
+        for name, ts in (("job1", 130.0), ("job2", 560.0), ("job3", 975.0), ("long_early", 1400.0),
+                         ("end", demo.t_end - 1.0)):
             picks[name] = next(n for n, f in enumerate(frames) if f.t >= ts and f.overlay is None)
         picks["outro"] = len(frames) - 1
         for name, n in picks.items():

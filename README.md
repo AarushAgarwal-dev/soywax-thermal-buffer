@@ -3,20 +3,23 @@
 The idea: put soy wax next to a small AI chip's heatsink. During a short burst of heavy load the
 wax melts and absorbs heat. During idle time it re-solidifies and hands that heat to the fan.
 
-This folder holds a physics prototype of that idea, a narrated demo video built from it, and a
-small website that presents both.
+**In the default scenario, 20 g of soy wax cast into aluminum foam lowers the chip's peak
+temperature by 9 °C, removes all throttling in three 90-second AI jobs (stock heatsink: 131 s), and
+holds full speed 3.8× longer in an 8-minute job.**
+
+This repo holds the physics prototype, a narrated demo video built from it, and a small website
+that presents both.
 
 | File | What it is |
 |---|---|
 | `site/` | Static website (open `site/index.html`), deployed on Render |
-| `site/assets/soywax_demo.mp4` | Narrated demo video, 1920x1080, 2:28 |
+| `site/assets/soywax_demo.mp4` | Narrated demo video, 1920x1080, 2:09 |
 | `out/soywax_demo_narration.txt` | Narration script with timestamps |
-| `out/summary.png`, `out/results.json` | Static plot and numbers for all four builds |
+| `out/advantages.png` | Chart of the headline results |
+| `out/summary.png`, `out/results.json` | Full 36-minute run and numbers for every build |
 | `soywax_sim.py` | The simulation |
 | `make_demo_video.py` | Renders the video from the simulation |
 | `render.yaml` | Render Blueprint for the website |
-
-In the video, "Al foam" means aluminum foam (Al is the chemical symbol for aluminum).
 
 ## Website
 
@@ -29,7 +32,7 @@ Render reads `render.yaml`, publishes `site/` as a static site, and redeploys on
 ## Run it
 
 ```
-python soywax_sim.py                   # design checks, results table, out/summary.png, out/results.json
+python soywax_sim.py                   # design checks, results table, charts and results.json in out/
 python make_demo_video.py              # narrated video (the voice needs internet on the first run)
 python make_demo_video.py --no-voice   # captions only, works offline
 python make_demo_video.py --stills     # preview frames only
@@ -55,32 +58,40 @@ P(t) -> [chip + package] --0.7 K/W--> [heatsink, 25 J/K] --2.4 K/W--> 25 °C air
 - The wax pack is a 50 × 50 mm slab split into 12 layers. Each layer tracks its enthalpy, so
   melting and re-solidifying over the wax's melting range come out of the energy balance.
 - The workload is three 90-second jobs, 7 minutes apart, then an 8-minute job.
-- The four builds are the stock heatsink, +20 g of pure soy wax (8.9 mm slab), +20 g of soy wax
-  cast into aluminum foam (92 % wax by volume, 9.7 mm), and a control with +20 g of plain aluminum.
+- The video compares three builds: **A** the stock heatsink, **B** +20 g of soy wax (8.9 mm slab),
+  and **C** +20 g of soy wax cast into aluminum foam (92 % wax by volume, 9.7 mm).
+- The simulation also runs a fourth build, **D**, which adds 20 g of plain aluminum. It checks how
+  much of any effect comes from added mass alone. Its numbers are in `out/results.json` and
+  `out/summary.png`.
 
 ## Results (default scenario)
 
-| Build | Peak junction, short jobs | Throttled, short jobs | Full speed in 8-min job |
-|---|---|---|---|
-| Stock heatsink | 86.7 °C | 131 s | 0:52 |
-| +20 g soy wax | 85.9 °C | 47 s | 1:11 |
-| +20 g soy wax in aluminum foam | 77.8 °C | 0 s | 3:16 |
-| +20 g aluminum (control) | 86.0 °C | 40 s | 1:16 |
+| Build | Peak junction, short jobs | Throttled, short jobs | Full speed in 8-min job | Time to finish 8-min job |
+|---|---|---|---|---|
+| A · Stock heatsink | 86.7 °C | 131 s | 0:52 | 9:16 |
+| B · +20 g soy wax | 85.9 °C | 47 s | 1:11 | 8:53 |
+| C · +20 g soy wax in aluminum foam | 77.8 °C | 0 s | 3:16 | 8:38 |
 
-What this says about the idea:
+Highlights:
 
-- **Wax in metal works, pure wax does not.** Pure wax conducts heat poorly, so a 90 s burst melts
-  only about 1.7 mm of it. The pure slab performed about as well as the same mass of plain aluminum.
-  Keep all the wax within about 2 mm of metal: foam, fins, or a honeycomb.
-- **It buys time, not capacity.** Once the wax has melted, every build throttles to the same ~19 W.
-  The fan and heatsink set that limit.
-- **The melting point has to fit the hardware.** It must sit above the idle heatsink temperature
+- **Wax in aluminum foam (C):** 9 °C lower peak temperature, no throttling in the short jobs, full
+  speed held 3.8× longer in the long job, and the long job finishes 38 s sooner.
+- **The simple wax pack (B)** alone cuts throttling by 64 % and extends full speed from 0:52 to 1:11.
+- **Passive:** nothing to power or control. The foam build adds about 25 g (20 g wax, 5 g aluminum).
+
+Design notes:
+
+- **Put the wax in metal.** In a 90 s burst, heat reaches about 1.7 mm into plain wax. Foam, fins or a
+  honeycomb keep all the wax within about 2 mm of metal.
+- **Match the melting point to the hardware.** It should sit above the idle heatsink temperature
   (35 °C here) and below the point where throttling starts (64 °C at the heatsink). Soy wax at
   43–55 °C fits this device.
-- **It needs idle time.** Re-solidifying takes about 5 minutes after each burst. During that time
-  the chip idles 2–8 °C warmer.
-- Soy wax stores about half as much heat per gram as commercial paraffin PCMs (~110 vs ~200 J/g).
-  Expect roughly twice the mass of a paraffin PCM for the same buffer.
+- **Size the pack for the burst.** 20 g stores about 2.2 kJ, against about 1.8 kJ of burst heat the
+  fan cannot remove in 90 s.
+- **Plan the recharge.** The wax re-solidifies in about 5 minutes of lighter load, and the chip idles
+  2–8 °C warmer while it releases the stored heat.
+- **Plan the mass.** Soy wax stores about 110 J/g, against about 200 J/g for commercial paraffin
+  phase-change materials. Soy wax is plant-based. A paraffin PCM needs roughly half the mass.
 
 ## Assumptions and sources
 
@@ -92,7 +103,7 @@ What this says about the idea:
 | Wax in aluminum foam | 3 W/m·K, 92 % wax by volume | Aluminum-foam/paraffin composites measure 3–7 W/m·K, 30–60× pure paraffin ([Chen et al.](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5560106); [MDPI Materials 17(17), 4332](https://www.mdpi.com/1996-1944/17/17/4332)) |
 | Chip and heatsink | values in the diagram above | An illustrative compact edge-AI module, not a specific product |
 
-## Limitations
+## Model limits
 
 - Conduction is 1-D and there is no convection in molten wax. That is conservative for pure wax.
 - Melting and freezing follow the same curve. Real soy wax can supercool and freezes over a broad
@@ -103,8 +114,8 @@ What this says about the idea:
 - Not modelled: molten wax leaks (it needs a sealed container), wax expands when it melts (the
   container needs headroom), vegetable wax oxidizes over many cycles, and wax is flammable.
 
-Treat these numbers as a reason to build a bench rig, not as a result: heater + thermocouples +
-the same fan, with and without the wax pack.
+These numbers are a reason to build a bench rig: heater + thermocouples + the same fan, with and
+without the wax pack.
 
 ## Voice
 

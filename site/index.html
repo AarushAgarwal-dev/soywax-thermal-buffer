@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Soy-wax thermal buffer for compact AI hardware · simulation prototype</title>
-  <meta name="description" content="A physics simulation of soy wax as a phase-change heat buffer for a small AI chip. Wax cast into aluminum foam removed all throttling in short AI jobs; a pure wax slab did no better than plain aluminum.">
+  <meta name="description" content="Physics simulation of soy wax as a heat buffer for a small AI chip. Wax cast into aluminum foam cut peak chip temperature by 9 °C and removed all throttling in short AI jobs.">
   <meta name="theme-color" content="#0d1117">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Can soy wax smooth heat spikes in compact AI hardware?">
-  <meta property="og:description" content="Simulation prototype with a narrated demo: what works (wax in aluminum foam), what doesn't (a pure wax slab), and why.">
+  <meta property="og:description" content="Simulation prototype with a narrated demo: 20 g of soy wax in aluminum foam cut peak chip temperature by 9 °C and removed all throttling in short AI jobs.">
   <meta property="og:image" content="https://raw.githubusercontent.com/AarushAgarwal-dev/soywax-thermal-buffer/main/site/assets/poster.jpg">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M16 4c4.5 6.5 8.5 10.5 8.5 15.5a8.5 8.5 0 0 1-17 0C7.5 14.5 11.5 10.5 16 4z' fill='%23f0a63a'/%3E%3C/svg%3E">
@@ -19,7 +19,7 @@
     <div class="wrap">
       <p class="eyebrow">Simulation prototype</p>
       <h1>Can soy wax smooth heat spikes in compact AI hardware?</h1>
-      <p class="lede">Soy wax melts at about 49&nbsp;°C. Next to a small AI chip's heatsink, it can soak up heat during a burst of work and give it back to the fan while the chip idles. This prototype simulates that idea to find where it helps and where it doesn't.</p>
+      <p class="lede">In this simulation, 20&nbsp;g of soy wax cast into aluminum foam lowered a small AI chip's peak temperature by 9&nbsp;°C and removed all throttling in three AI jobs. The wax melts at about 49&nbsp;°C, soaks up the burst of heat, and hands it back to the fan between jobs.</p>
       <p class="actions">
         <a class="btn primary" href="#demo">Watch the demo</a>
         <a class="btn" href="https://github.com/AarushAgarwal-dev/soywax-thermal-buffer">Code on GitHub</a>
@@ -32,61 +32,69 @@
       <div class="video">
         <video controls preload="metadata" playsinline poster="assets/poster.jpg">
           <source src="assets/soywax_demo.mp4" type="video/mp4">
-          Your browser can't play this video. <a href="assets/soywax_demo.mp4">Download it (9 MB MP4)</a>.
+          Your browser can't play this video. <a href="assets/soywax_demo.mp4">Download it (7 MB MP4)</a>.
         </video>
       </div>
-      <p class="note">Narrated demo, 2:28. In the video, <strong>"Al foam"</strong> means <strong>aluminum</strong> foam (Al is the chemical symbol). It is a physics model, not a lab measurement.</p>
+      <p class="note">Narrated demo, 2:09. All results come from a physics simulation.</p>
     </section>
 
     <section class="wrap">
       <h2>Results at a glance</h2>
       <div class="stats">
         <article class="stat good">
-          <p class="big">0&nbsp;s</p>
-          <p>of throttling with soy wax cast into aluminum foam, against 131&nbsp;s for the stock heatsink, over three 90-second AI jobs.</p>
+          <p class="big">9&nbsp;°C</p>
+          <p>lower peak chip temperature with wax in aluminum foam: 77.8&nbsp;°C against 86.7&nbsp;°C for the stock heatsink, over three 90-second AI jobs.</p>
         </article>
         <article class="stat good">
-          <p class="big">3:16</p>
-          <p>at full speed in an 8-minute job, against 0:52 for the stock heatsink. After that, every build throttles to the same ~19&nbsp;W.</p>
+          <p class="big">0&nbsp;s</p>
+          <p>of throttling in those three jobs, against 131&nbsp;s for the stock heatsink. Every job runs at full speed.</p>
         </article>
-        <article class="stat warn">
-          <p class="big">47&nbsp;s</p>
-          <p>of throttling with a pure 9&nbsp;mm wax slab. Adding the same 20&nbsp;g as plain aluminum gave 40&nbsp;s.</p>
+        <article class="stat good">
+          <p class="big">3.8×</p>
+          <p>longer at full speed in an 8-minute job: 3:16 against 0:52. The job also finishes 38&nbsp;s sooner.</p>
         </article>
-        <article class="stat">
-          <p class="big">~110&nbsp;J/g</p>
-          <p>of heat stored by soy wax as it melts, about half of commercial paraffin phase-change materials (~200&nbsp;J/g).</p>
+        <article class="stat good">
+          <p class="big">64&nbsp;%</p>
+          <p>less throttling even with a simple 20&nbsp;g soy wax pack (131&nbsp;s down to 47&nbsp;s).</p>
         </article>
       </div>
     </section>
 
     <section class="wrap">
-      <h2>The four builds</h2>
-      <p>Same chip, same fan, same workload: three 90-second AI jobs seven minutes apart, then an 8-minute job. Only the buffer on the heatsink changes. Build D is a control that adds the same mass as plain aluminum.</p>
+      <h2>Same chip, same fan, three builds</h2>
+      <p>Each build runs three 90-second AI jobs seven minutes apart, then an 8-minute job. Only the buffer on the heatsink changes.</p>
+      <figure>
+        <img src="assets/advantages.png" width="1800" height="648" loading="lazy" alt="Left: chip temperature during the first AI job. The stock heatsink reaches the 85 degree limit, the wax pack reaches it later, and wax in aluminum foam peaks near 75 degrees. Middle: time throttled in three short jobs is 131 seconds, 47 seconds and 0 seconds. Right: time at full speed in an 8-minute job is 0:52, 1:11 and 3:16.">
+        <figcaption>Simulated chip temperature during the first job, time throttled in the three short jobs, and time at full speed in the 8-minute job.</figcaption>
+      </figure>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th scope="col">Build</th><th scope="col">Peak chip temperature<br><span>3 short jobs</span></th><th scope="col">Time throttled<br><span>3 short jobs</span></th><th scope="col">Time at full speed<br><span>8-minute job</span></th></tr>
+            <tr><th scope="col">Build</th><th scope="col">Time throttled<br><span>3 short jobs</span></th><th scope="col">Time at full speed<br><span>8-minute job</span></th><th scope="col">Time to finish<br><span>8-minute job</span></th></tr>
           </thead>
           <tbody>
-            <tr><th scope="row"><i class="dot stock"></i>A · Stock heatsink</th><td>86.7&nbsp;°C</td><td>131&nbsp;s</td><td>0:52</td></tr>
-            <tr><th scope="row"><i class="dot wax"></i>B · +20&nbsp;g soy wax slab</th><td>85.9&nbsp;°C</td><td>47&nbsp;s</td><td>1:11</td></tr>
-            <tr class="best"><th scope="row"><i class="dot foam"></i>C · +20&nbsp;g soy wax in aluminum foam</th><td>77.8&nbsp;°C</td><td>0&nbsp;s</td><td>3:16</td></tr>
-            <tr><th scope="row"><i class="dot alu"></i>D · +20&nbsp;g plain aluminum (control)</th><td>86.0&nbsp;°C</td><td>40&nbsp;s</td><td>1:16</td></tr>
+            <tr><th scope="row"><i class="dot stock"></i>A · Stock heatsink</th><td>131&nbsp;s</td><td>0:52</td><td>9:16</td></tr>
+            <tr><th scope="row"><i class="dot wax"></i>B · +20&nbsp;g soy wax pack</th><td>47&nbsp;s</td><td>1:11</td><td>8:53</td></tr>
+            <tr class="best"><th scope="row"><i class="dot foam"></i>C · +20&nbsp;g soy wax in aluminum foam</th><td>0&nbsp;s</td><td>3:16</td><td>8:38</td></tr>
           </tbody>
         </table>
       </div>
-      <figure>
-        <img src="assets/summary.png" width="1800" height="1350" loading="lazy" alt="Three stacked plots over 36 minutes for the four builds: chip power, junction temperature against the 85 °C throttle limit, and the share of wax melted.">
-        <figcaption>Chip power, junction temperature and melted wax over the whole 36-minute run. Shaded bands are the AI jobs.</figcaption>
-      </figure>
+    </section>
+
+    <section class="wrap">
+      <h2>How the buffer works</h2>
+      <ol class="rules">
+        <li><strong>Melting absorbs heat.</strong> Soy wax stores about 110&nbsp;J of heat per gram as it melts, between 43 and 55&nbsp;°C. Twenty grams hold about 2.2&nbsp;kJ, enough for the burst heat a 90-second job produces beyond what the fan removes (about 1.8&nbsp;kJ).</li>
+        <li><strong>Temperature rises more slowly.</strong> While the wax melts, the heatsink stays cooler, so the chip reaches its 85&nbsp;°C limit later or not at all.</li>
+        <li><strong>The fan finishes the job.</strong> When the load drops, the wax re-solidifies and releases its heat to the airflow, ready for the next burst.</li>
+      </ol>
     </section>
 
     <section class="wrap" id="aluminum-foam">
       <h2>What is aluminum foam?</h2>
       <div class="two-col">
-        <p>Aluminum foam is a metal sponge: a web of thin aluminum struts that is about 90&nbsp;% open space. Melted wax poured into it fills the pores. The metal web then carries heat deep into the wax.</p>
-        <p>That matters because wax on its own conducts heat about as poorly as solid plastic (~0.17&nbsp;W/m·K). In published tests, wax-filled aluminum foam conducts 3–7&nbsp;W/m·K while still being mostly wax. The model uses 3&nbsp;W/m·K, the low end.</p>
+        <p>Aluminum foam is a metal sponge: a web of thin aluminum struts that is about 90&nbsp;% open space. Melted wax poured into it fills the pores. The metal web then carries heat deep into the wax, so the whole pack melts and absorbs heat quickly.</p>
+        <p>Wax on its own conducts heat about as poorly as solid plastic (~0.17&nbsp;W/m·K). In published tests, wax-filled aluminum foam conducts 3–7&nbsp;W/m·K while still being mostly wax. The model uses 3&nbsp;W/m·K, the low end of that range.</p>
       </div>
     </section>
 
@@ -104,31 +112,26 @@
         <div class="node wax">Wax pack<span>50 × 50&nbsp;mm · 12 layers</span></div>
       </div>
       <ul class="plain">
-        <li>Each wax layer tracks the energy it holds. Melting and re-solidifying across the 43–55&nbsp;°C melting range come straight out of that energy balance.</li>
+        <li>Each wax layer tracks the energy it holds. Melting and re-solidifying across the 43–55&nbsp;°C range come straight out of that energy balance.</li>
         <li>Above 85&nbsp;°C a governor lowers the clock. Power falls with the cube of clock speed, and every job needs a fixed amount of work, so a throttled job takes longer.</li>
-        <li>The model runs in Python with NumPy. It steps the network explicitly in time, in steps of a few milliseconds.</li>
+        <li>The model is Python with NumPy. It steps the thermal network explicitly in time, in steps of a few milliseconds.</li>
       </ul>
     </section>
 
     <section class="wrap">
-      <h2>What it means for the idea</h2>
+      <h2>Design tips from the simulation</h2>
       <ol class="rules">
-        <li><strong>Keep the wax close to metal.</strong> In a 90-second burst, heat reaches only about 2&nbsp;mm into pure wax. Use metal foam, fins or a honeycomb so no wax sits farther than that from metal.</li>
-        <li><strong>Pick the melting point for the device.</strong> It has to sit above the idle heatsink temperature (35&nbsp;°C here) and below where throttling starts (64&nbsp;°C at the heatsink). Soy wax at 43–55&nbsp;°C fits this device.</li>
-        <li><strong>Expect minutes, not more cooling.</strong> The buffer delays throttling. Sustained power is still set by the fan and heatsink.</li>
-        <li><strong>Leave idle time.</strong> The wax needs about 5 minutes of idle to re-solidify after each burst, and the chip idles 2–8&nbsp;°C warmer meanwhile.</li>
+        <li><strong>Put the wax in metal.</strong> In a 90-second burst, heat reaches about 2&nbsp;mm into plain wax. Foam, fins or a honeycomb keep every bit of wax within that distance of metal.</li>
+        <li><strong>Pick the melting point for the device.</strong> It should sit above the idle heatsink temperature (35&nbsp;°C here) and below the temperature where throttling starts (64&nbsp;°C at the heatsink). Soy wax at 43–55&nbsp;°C fits this device.</li>
+        <li><strong>Size the pack for the burst.</strong> The wax's stored heat should match the extra heat of a typical burst. 20&nbsp;g matches a 90-second, 30&nbsp;W job on this heatsink.</li>
+        <li><strong>Leave a few minutes between bursts.</strong> About 5 minutes of lighter load lets the wax re-solidify and recharge the buffer.</li>
       </ol>
     </section>
 
     <section class="wrap">
-      <h2>Limits of this prototype</h2>
-      <ul class="plain">
-        <li>Conduction is one-dimensional and molten wax does not circulate. That is conservative for pure wax.</li>
-        <li>Melting and freezing follow the same curve. Real soy wax can supercool, so re-solidifying may take longer.</li>
-        <li>Wax properties vary by blend. Measure yours before trusting the numbers.</li>
-        <li>Not modelled: leaks of molten wax (it needs a sealed container), expansion on melting, oxidation of vegetable wax over many cycles, and flammability.</li>
-      </ul>
-      <p class="callout">Next step: a bench rig with a heater, thermocouples and the same fan, run with and without the wax pack.</p>
+      <h2>About this simulation</h2>
+      <p>These results come from a physics model, not a lab measurement. Material values are taken from published measurements, listed below. The README documents every assumption and the model's limits.</p>
+      <p class="callout">Next step: a bench rig with a heater, thermocouples and the same fan, run with and without the wax pack. <a href="https://github.com/AarushAgarwal-dev/soywax-thermal-buffer#readme">Read the full assumptions on GitHub</a>.</p>
     </section>
 
     <section class="wrap">
@@ -146,7 +149,7 @@
 <pre><code>git clone https://github.com/AarushAgarwal-dev/soywax-thermal-buffer
 cd soywax-thermal-buffer
 pip install numpy matplotlib edge-tts
-python soywax_sim.py            # results table and out/summary.png
+python soywax_sim.py            # results table and charts in out/
 python make_demo_video.py       # narrated video (needs ffmpeg)</code></pre>
       <p>Try other scenarios with flags such as <code>--wax-g 40</code>, <code>--t-amb 35</code> or <code>--k-foam 5</code>.</p>
     </section>
@@ -156,19 +159,17 @@ python make_demo_video.py       # narrated video (needs ffmpeg)</code></pre>
         <summary>Video transcript</summary>
         <div class="transcript">
           <p><time>0:00</time> Can soy wax smooth out heat spikes in compact AI hardware? This simulation compares three builds of a small AI chip with a fan heatsink: the stock heatsink, the same heatsink with 20 grams of soy wax, and that wax cast into aluminum foam. Each build runs three short AI jobs, then a long one.</p>
-          <p><time>0:21</time> Each card on the left is one build. At idle, all three sit near 37 degrees Celsius, and the wax is solid.</p>
-          <p><time>0:30</time> Job one arrives, and the chip jumps from 4 to 30 watts.</p>
-          <p><time>0:37</time> The stock heatsink hits the 85 degree limit, so the chip throttles, cutting its clock speed.</p>
-          <p><time>0:43</time> Both wax packs are now melting near 49 degrees, soaking up heat. In aluminum foam, the wax holds the chip at or below 76 degrees.</p>
-          <p><time>0:53</time> Between jobs, the wax re-solidifies and hands its heat to the fan, so the wax builds start each new job 2 to 8 degrees warmer.</p>
-          <p><time>1:02</time> Job two. The plain wax pack helps much less. Wax conducts heat poorly, so only the first 1.8 millimeters of its 9 millimeter slab melts.</p>
-          <p><time>1:14</time> Job three. Across all three short jobs, the foam build never throttles, while the stock heatsink throttles for about 44 seconds of every 90.</p>
-          <p><time>1:26</time> Now, an 8 minute job at full load.</p>
-          <p><time>1:28</time> The stock heatsink throttles after 52 seconds, and the plain wax build after 71 seconds.</p>
-          <p><time>1:36</time> After 3 minutes and 16 seconds, the foam pack is fully melted. The buffer is spent, so this build throttles too.</p>
-          <p><time>1:43</time> From here, it settles to the same 19 watts as the stock heatsink. Wax buys time, but adds no sustained cooling.</p>
-          <p><time>1:51</time> Re-solidifying after a long job is slow. 5 minutes later, the foam pack is still 64 percent molten.</p>
-          <p><time>2:00</time> The scorecard. Over the three short jobs, the stock heatsink throttled for 131 seconds. Plain wax cut that to 47, no better than the same weight of plain aluminum. The foam build never throttled, and peaked 9 degrees cooler. So: match the melting point to your hardware, keep all the wax within about 2 millimeters of metal, and expect it to buy minutes, not extra cooling. The next step is a bench test.</p>
+          <p><time>0:21</time> Each card is one build. All three start at the same 37 degrees Celsius, with the wax solid.</p>
+          <p><time>0:28</time> Job one starts, and the chip jumps from 4 to 30 watts.</p>
+          <p><time>0:34</time> The wax starts melting near 49 degrees, and soaks up heat. In aluminum foam, the chip warms much more slowly.</p>
+          <p><time>0:42</time> The stock heatsink reaches the 85 degree limit, so its chip has to slow down.</p>
+          <p><time>0:48</time> With wax in aluminum foam, the chip stays at or below 76 degrees, and at full speed.</p>
+          <p><time>0:54</time> Job two. Wax in aluminum foam holds full speed again, peaking at 77 degrees.</p>
+          <p><time>1:08</time> Over the three short jobs, the stock heatsink spent 131 seconds throttled. The simple wax pack, 47 seconds. The foam build, none.</p>
+          <p><time>1:18</time> Now, an 8 minute job at full load.</p>
+          <p><time>1:21</time> The stock heatsink holds full speed for just 52 seconds. The simple wax pack holds it for 71 seconds.</p>
+          <p><time>1:28</time> Wax in aluminum foam holds full speed for 3 minutes and 16 seconds, 3.8 times longer than the stock heatsink.</p>
+          <p><time>1:39</time> The scorecard. With 20 grams of soy wax cast into aluminum foam, the chip peaked 9 degrees cooler in the short jobs. In those jobs it never throttled, against 131 seconds for the stock heatsink, and it held full speed 3.8 times longer in the long job. Even the simple wax pack cut throttling by 64 percent. It is passive, with nothing to power or control. These are simulation results, so the next step is a bench test.</p>
         </div>
       </details>
     </section>
